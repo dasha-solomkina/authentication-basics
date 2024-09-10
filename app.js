@@ -1,5 +1,5 @@
 /////// app.js
-
+const bcrypt = require('bcryptjs')
 const { Pool } = require('pg')
 const express = require('express')
 const session = require('express-session')
@@ -35,13 +35,26 @@ app.get('/sign-up', (req, res) => res.render('sign-up-form'))
 
 app.post('/sign-up', async (req, res, next) => {
   try {
-    await pool.query('INSERT INTO users (username, password) VALUES ($1, $2)', [
-      req.body.username,
-      req.body.password,
-    ])
-    res.redirect('/')
+    // Hash the password before storing it
+    bcrypt.hash(req.body.password, 10, async (err, hashedPassword) => {
+      if (err) {
+        return next(err) // If there's an error, handle it
+      }
+
+      // Store the hashed password in the database
+      await pool.query(
+        'INSERT INTO users (username, password) VALUES ($1, $2)',
+        [
+          req.body.username,
+          hashedPassword, // Use the hashed password instead of the plain password
+        ]
+      )
+
+      // Redirect or respond to the client
+      res.redirect('/')
+    })
   } catch (err) {
-    return next(err)
+    return next(err) // Handle any database errors
   }
 })
 
@@ -57,7 +70,12 @@ passport.use(
       if (!user) {
         return done(null, false, { message: 'Incorrect username' })
       }
-      if (user.password !== password) {
+      // if (user.password !== password) {
+      //   return done(null, false, { message: 'Incorrect password' })
+      // }
+      const match = await bcrypt.compare(password, user.password)
+      if (!match) {
+        // passwords do not match!
         return done(null, false, { message: 'Incorrect password' })
       }
       return done(null, user)
